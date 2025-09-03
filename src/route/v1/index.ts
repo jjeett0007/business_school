@@ -2,6 +2,7 @@ import express from "express";
 
 const router = express.Router();
 import chat from "./chat.route";
+import escalation from "./escalation.route";
 
 interface RouteConfig {
   path: string;
@@ -12,6 +13,10 @@ const defaultRoutes: RouteConfig[] = [
   {
     path: "/chat",
     route: chat
+  },
+  {
+    path: "/escalation",
+    route: escalation
   }
 ];
 

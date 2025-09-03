@@ -1,4 +1,5 @@
 import Joi from "joi";
+import { session } from "passport";
 
 const chatCreateValidation = {
   body: Joi.object().keys({
@@ -13,4 +14,13 @@ const sessionIdParamsValidation = {
   }),
 };
 
-export { chatCreateValidation, sessionIdParamsValidation };
+const escalationValidation = {
+  body: Joi.object().keys({
+    sessionId: Joi.string().required(),
+    name: Joi.string().required(),
+    email: Joi.string().email().required(),
+    message: Joi.string().required(),
+  }),
+}
+
+export { chatCreateValidation, sessionIdParamsValidation, escalationValidation };

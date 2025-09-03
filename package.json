@@ -4,7 +4,7 @@
   "description": "Generated with create-nodeapi-backend (typescript)",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon --watch src --exec node --loader ts-node/esm --experimental-specifier-resolution=node src/server.ts",
+    "dev": "nodemon --watch src --exec node --loader ts-node/esm --trace-warnings --experimental-specifier-resolution=node src/server.ts",
     "build": "rollup -c",
     "start": "node dist/server.js"
   },

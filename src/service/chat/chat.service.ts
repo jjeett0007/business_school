@@ -6,6 +6,7 @@ import type {
   ChatCompletionMessageParam,
   ChatCompletionTool,
 } from "openai/resources/index";
+import { sendMessageBySessionId, isTyping } from "../../socket/websocket";
 
 interface ChatServiceData {
   sessionId: string;
@@ -74,26 +75,34 @@ All of your responses must be valid JSON objects with exactly two fields:
 - "reply": string
 - "needsEscalation": boolean
 
-If the user explicitly asks to speak with a human, agent, representative, or real person, 
-always return JSON with "needsEscalation": true, and craft a "reply" asking the user to fill out
-their name, email, and message to the human advisor. You can phrase this in diverse natural ways,
-so it does not repeat the same English sentence every time, but it must clearly request these fields.
+Rules:
 
-All responses must be valid JSON objects with exactly two fields:
-- "reply": string
-- "needsEscalation": boolean
+1. If the user explicitly asks to speak with a human, agent, representative, or real person, 
+   always return JSON with "needsEscalation": true.
+   Craft the "reply" naturally asking the user to provide:
+   - Name
+   - Email
+   - Message for the human advisor
+   The wording can vary, but the request must clearly ask for these three fields.
 
-If the user intends to speak with a human advisor, agent, or representative (regardless of how they phrase it), 
-always set "needsEscalation": true. Craft the "reply" naturally to ask the user for their name, email, and message for the human advisor. 
-You can vary the wording every time, but the meaning should be clear.
+2. If the user provides their name, email, and message for a human advisor, 
+   respond by acknowledging receipt and rephrasing naturally to say:
+   "An assistant will reach out to you via your provided email as soon as possible."
 
-For other questions, answer using only the data available through the tools.
+3. If, in the same conversation, the user again requests to speak to a human assistant 
+   **and we already have their contact info**, respond naturally with:
+   "An assistant will reach out to you via your previously provided information. Thank you."
 
-Never output anything that is not a valid JSON object.
+4. For all other questions, answer only using data available through the tools.
 
-+ finally if in same conversation user still request to speak to a representative, human assistant, officials, support team, let "needEscalation" be "true" always or tell them 
-+ if they havent filled the previous form filled they should do so, or tell them the support team has receive their message and will get back to you as soon as possible
+5. Never output anything that is not a valid JSON object.
+
+6. At all times, if the user still requests a human assistant but has not yet provided the requested info, 
+   remind them to provide their name, email, and message. If they already provided it, 
+   confirm that the support team has received it and will contact them soon.
+
 `;
+
 
 const tools: ChatCompletionTool[] = [
   {
@@ -189,8 +198,7 @@ const tools: ChatCompletionTool[] = [
   },
 ];
 
-// tool function: handle escalation request
-
+// tool function
 const toolData = {
   getPrograms: [
     {
@@ -316,105 +324,117 @@ const openai = new OpenAI({
   apiKey: config.openai.apiKey,
 });
 
+async function processGpt(sessionId: string, content: string) {
+  isTyping(sessionId, true);
+  // 0. Load or create session
+  let session = await sessions.getAllCreateSession(sessionId);
+  session = await sessions.updateSession(session, "user", content);
+
+
+  const gptMessages: ChatCompletionMessageParam[] = [
+    { role: "system", content: systemPrompt },
+    ...session.messages.map((m) => ({
+      role: m.role as "user" | "assistant",
+      content: m.content,
+    })),
+  ];
+
+  // 1. Ask OpenAI
+  let completion = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: gptMessages,
+    tools,
+  });
+
+  let message = completion.choices?.[0]?.message;
+
+  // 2. If tool call detected
+  if (message?.tool_calls && message.tool_calls.length > 0) {
+    const toolCall = message?.tool_calls[0];
+    if (toolCall && toolCall.type === "function") {
+      const fnName = (toolCall as any).function.name;
+      const args = (toolCall as any).function.arguments
+        ? JSON.parse((toolCall as any).function.arguments)
+        : {};
+
+      // Run the tool on the backend
+      const result = (toolData as any)[fnName] ?? { error: "Unknown tool" };
+
+      // 3. Send follow-up completion with tool result
+      const followUpMessages: ChatCompletionMessageParam[] = [
+        ...gptMessages,
+        {
+          role: "assistant",
+          tool_call_id: toolCall.id,
+          name: fnName,
+          content: JSON.stringify(result),
+        } as any, // cast because TS doesn't know 'tool' role yet
+      ];
+
+      completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: followUpMessages,
+        tools, // tools array here
+        response_format: { type: "json_object" },
+        tool_choice: {
+          type: "function",
+          function: { name: "support_reply" },
+        },
+      });
+
+      message = completion.choices?.[0]?.message;
+    }
+  }
+
+  // 4. Parse final JSON reply
+  let replyData: ReplyData = {
+    reply: "Sorry, something went wrong.",
+    needsEscalation: true,
+  };
+  if (message?.content) {
+    try {
+      replyData = JSON.parse(message.content);
+    } catch {
+      replyData = { reply: message.content, needsEscalation: false };
+    }
+  } else if (
+    message?.tool_calls?.length &&
+    (message.tool_calls[0] as any).function?.arguments
+  ) {
+    try {
+      replyData = JSON.parse((message.tool_calls[0] as any).function.arguments);
+    } catch {
+      replyData = {
+        reply: "Error parsing tool call.",
+        needsEscalation: true,
+      };
+    }
+  }
+
+  // 5. Save assistant reply
+  await sessions.updateSession(session, "assistant", replyData.reply);
+
+  isTyping(sessionId, false);
+
+  // 6. Send reply to user via websocket
+
+  sendMessageBySessionId({
+    sessionId,
+    data: replyData,
+  });
+}
+
 const chatService = async (data: ChatServiceData) => {
   const { sessionId, content } = data;
 
   try {
-    let session = await sessions.getAllCreateSession(sessionId);
-    session = await sessions.updateSession(session, "user", content);
-
-    const gptMessages: ChatCompletionMessageParam[] = [
-      { role: "system", content: systemPrompt },
-      ...session.messages.map((m) => ({
-        role: m.role as "user" | "assistant",
-        content: m.content,
-      })),
-    ];
-
-    // 1. Ask OpenAI
-    let completion = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: gptMessages,
-      tools,
+    setImmediate(async () => {
+      await processGpt(sessionId, content);
     });
-
-    let message = completion.choices?.[0]?.message;
-
-    // 2. If tool call detected
-    if (message?.tool_calls && message.tool_calls.length > 0) {
-      const toolCall = message?.tool_calls[0];
-      if (toolCall && toolCall.type === "function") {
-        const fnName = (toolCall as any).function.name;
-        const args = (toolCall as any).function.arguments
-          ? JSON.parse((toolCall as any).function.arguments)
-          : {};
-
-       
-        // Run the tool on the backend
-        const result = (toolData as any)[fnName] ?? { error: "Unknown tool" };
-
-        // 3. Send follow-up completion with tool result
-        const followUpMessages: ChatCompletionMessageParam[] = [
-          ...gptMessages,
-          {
-            role: "assistant",
-            tool_call_id: toolCall.id,
-            name: fnName,
-            content: JSON.stringify(result),
-          } as any, // cast because TS doesn't know 'tool' role yet
-        ];
-
-        console.log(followUpMessages);
-
-        completion = await openai.chat.completions.create({
-          model: "gpt-4o-mini",
-          messages: followUpMessages,
-          tools, // tools array here
-          response_format: { type: "json_object" },
-          tool_choice: {
-            type: "function",
-            function: { name: "support_reply" },
-          },
-        });
-
-        message = completion.choices?.[0]?.message;
-      }
-    }
-
-    // 4. Parse final JSON reply
-    let replyData: ReplyData = {
-      reply: "Sorry, something went wrong.",
-      needsEscalation: true,
-    };
-    if (message?.content) {
-      try {
-        replyData = JSON.parse(message.content);
-      } catch {
-        replyData = { reply: message.content, needsEscalation: false };
-      }
-    } else if (
-      message?.tool_calls?.length &&
-      (message.tool_calls[0] as any).function?.arguments
-    ) {
-      try {
-        replyData = JSON.parse(
-          (message.tool_calls[0] as any).function.arguments
-        );
-      } catch {
-        replyData = {
-          reply: "Error parsing tool call.",
-          needsEscalation: true,
-        };
-      }
-    }
-
-    // 5. Save assistant reply
-    await sessions.updateSession(session, "assistant", replyData.reply);
 
     return {
       code: 200,
       message: "Chat processed successfully",
-      data: replyData,
     };
   } catch (error: any) {
     throw new Error(`Chat service error: ${error.message}`);
