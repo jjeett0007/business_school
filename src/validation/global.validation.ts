@@ -1,5 +1,4 @@
 import Joi from "joi";
-import { session } from "passport";
 
 const chatCreateValidation = {
   body: Joi.object().keys({
