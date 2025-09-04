@@ -16,7 +16,7 @@ const EscalationSchema = new Schema<EscalationDocument>(
     sessionId: {
       type: String,
       required: true,
-      index: true, // quick lookup by sessionId
+      index: true,
     },
     name: {
       type: String,
