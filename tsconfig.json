@@ -1,7 +1,6 @@
   {
     "compilerOptions": {
       // File Layout
-      "rootDir": "src",
       "outDir": "dist",
 
       // Environment Settings
@@ -9,7 +8,7 @@
       "target": "ES2020",
       "moduleResolution": "Node",         // ✅ For Node ESM resolution
       "esModuleInterop": true,
-      "types": ["node"],                   // ✅ For Node.js type support
+      "types": ["node", "jest"],                   // ✅ For Node.js and Jest type support
       "lib": ["esnext"],                   // ✅ Modern JS features
 
       // Other Outputs
@@ -38,6 +37,6 @@
         "config": ["config/index.ts"]
       },
     },
-    "include": ["src"],
+    "include": ["src", "tests"],
     "exclude": ["node_modules"]
   }

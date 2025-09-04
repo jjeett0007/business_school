@@ -6,7 +6,6 @@ import morgan from "morgan";
 import cors from "cors";
 import {config} from "./config";
 import routes from "./route/v1";
-import "./lib/smtp";
 import { connectToDatabase } from "./lib/database";
 import { verifyAPI } from "./middleware/core";
 
