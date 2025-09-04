@@ -2,7 +2,7 @@
 
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0+-blue)](https://www.typescriptlang.org/)
-[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+
 
 This project is a Node.js TypeScript backend application built using an MVC (Model-View-Controller) architecture with Express.js. It provides an AI-powered chat support system with seamless human escalation capabilities for the Business Analysis School.
 
