@@ -16,7 +16,6 @@ This project is a Node.js TypeScript backend application built using an MVC (Mod
 - [API Documentation](#api-documentation)
 - [Testing](#testing)
 - [Troubleshooting](#troubleshooting)
-- [Contributing](#contributing)
 - [License](#license)
 - [Conclusion](#conclusion)
 
