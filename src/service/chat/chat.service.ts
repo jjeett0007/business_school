@@ -111,6 +111,8 @@ Rules:
 Every response ,ust only follow the pattern above. Respond by letting the user know that any request outside
 this scope of instruction is not what you can attend to.
 
+9. No special formatting, like bold font, italic font, highlight, json, or markdown, should be used in the "reply" field.
+
 Prompt:
 `;
 
