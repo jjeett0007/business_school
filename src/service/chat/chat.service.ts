@@ -7,6 +7,7 @@ import type {
   ChatCompletionTool,
 } from "openai/resources/index";
 import { sendMessageBySessionId, isTyping } from "../../socket/websocket";
+import createEscalationService from "../escalationervice/createEscalation.service";
 
 interface ChatServiceData {
   sessionId: string;
@@ -116,8 +117,6 @@ this scope of instruction is not what you can attend to.
 Prompt:
 `;
 
-
-
 const tools: ChatCompletionTool[] = [
   {
     type: "function",
@@ -184,16 +183,24 @@ const tools: ChatCompletionTool[] = [
     function: {
       name: "escalateToHuman",
       description:
-        "Escalates the conversation to a human advisor when the user explicitly requests it.",
+        "Escalates the conversation to a human advisor when the user provides their name, email, and message.",
       parameters: {
         type: "object",
         properties: {
-          reason: {
+          name: {
             type: "string",
-            description: "Optional reason why the user requested escalation.",
+            description: "The user's name.",
+          },
+          email: {
+            type: "string",
+            description: "The user's email address.",
+          },
+          message: {
+            type: "string",
+            description: "The message for the human advisor.",
           },
         },
-        required: ["reply", "needsEscalation"],
+        required: ["name", "email", "message"],
       },
     },
   },
@@ -207,6 +214,24 @@ const tools: ChatCompletionTool[] = [
         type: "object",
         properties: {},
         required: [],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "askUserEmail",
+      description:
+        "Prompts the user for their Email to escalate the conversation",
+      parameters: {
+        type: "object",
+        properties: {
+          email: {
+            type: "string",
+            description: "The user's email address.",
+          },
+        },
+        required: ["email"],
       },
     },
   },
@@ -322,16 +347,47 @@ const toolData = {
     "Complete the payment process; you will receive a confirmation email with your start date and course access details.",
   ],
 
-  escalateToHuman: () => ({
-    reply:
-      "You requested to speak to a human advisor. Escalating this conversation now.",
-    needsEscalation: true,
-  }),
-
   askUserName: () => ({
     reply: "Hi there! Before we get started, may I know your name?",
     needsEscalation: false,
   }),
+  askUserEmail: () => ({
+    reply: "Please provide your email address to escalate this conversation.",
+    needsEscalation: false,
+  }),
+  escalateToHuman: async (args: {
+    name: string;
+    email: string;
+    message: string;
+    sessionId: string;
+  }) => {
+    if (!args.name || !args.email || !args.message || !args.sessionId) {
+      return {
+        reply: "Missing information. Cannot escalate chat.",
+        needsEscalation: false,
+      };
+    }
+
+    try {
+      await createEscalationService({
+        sessionId: args.sessionId,
+        name: args.name,
+        email: args.email,
+        message: args.message,
+      });
+
+      return {
+        reply:
+          "Your chat has been successfully escalated to a human advisor. An assistant will reach out to you soon.",
+        needsEscalation: true,
+      };
+    } catch (error) {
+      return {
+        reply: "Failed to escalate the chat. Please try again later.",
+        needsEscalation: true,
+      };
+    }
+  },
 };
 
 const openai = new OpenAI({
@@ -343,7 +399,6 @@ async function processGpt(sessionId: string, content: string) {
   // 0. Load or create session
   let session = await sessions.getAllCreateSession(sessionId);
   session = await sessions.updateSession(session, "user", content);
-
 
   const gptMessages: ChatCompletionMessageParam[] = [
     { role: "system", content: systemPrompt },
@@ -371,10 +426,15 @@ async function processGpt(sessionId: string, content: string) {
         ? JSON.parse((toolCall as any).function.arguments)
         : {};
 
-      // Run the tool on the backend
-      const result = (toolData as any)[fnName] ?? { error: "Unknown tool" };
+      const toolFn = (toolData as any)[fnName];
 
-      // 3. Send follow-up completion with tool result
+      let result;
+
+      if (Object.keys(args).length > 0) {
+        result = await toolFn({ ...args, sessionId }); // merge sessionId if needed
+      } else {
+        result = await toolFn();
+      }
       const followUpMessages: ChatCompletionMessageParam[] = [
         ...gptMessages,
         {

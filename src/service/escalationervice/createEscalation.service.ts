@@ -1,6 +1,7 @@
+import type { CreateEscalationData } from "model/escalation.model";
 import { Escalation, type EscalationDocument } from "../../model";
 
-const createEscalationService = async (data: EscalationDocument) => {
+const createEscalationService = async (data: CreateEscalationData) => {
   try {
     const existingEscalation = await Escalation.findOne({
       sessionId: data.sessionId,
