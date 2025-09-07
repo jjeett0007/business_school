@@ -438,11 +438,11 @@ async function processGpt(sessionId: string, content: string) {
       const followUpMessages: ChatCompletionMessageParam[] = [
         ...gptMessages,
         {
-          role: "assistant",
+          role: "tool",
           tool_call_id: toolCall.id,
-          name: fnName,
+          // name: fnName,
           content: JSON.stringify(result),
-        } as any, // cast because TS doesn't know 'tool' role yet
+        } // cast because TS doesn't know 'tool' role yet
       ];
 
       completion = await openai.chat.completions.create({
@@ -465,6 +465,7 @@ async function processGpt(sessionId: string, content: string) {
     reply: "Sorry, something went wrong.",
     needsEscalation: true,
   };
+  
   if (message?.content) {
     try {
       replyData = JSON.parse(message.content);
