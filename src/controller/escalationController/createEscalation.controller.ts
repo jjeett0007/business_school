@@ -3,9 +3,9 @@ import createEscalationService from "../../service/escalationervice/createEscala
 
 const createEscalationController = catchAsync(async (req: Request, res: Response) => {
   // Ai taken care of this
-  // const { code, message } = await createEscalationService(req.body);
+  const { code, message } = await createEscalationService(req.body);
 
-  handleResponse(res, 200, "Escalation created");
+  handleResponse(res, code, message);
 });
 
 export default createEscalationController
