@@ -4,9 +4,9 @@
   "description": "Generated with create-nodeapi-backend (typescript)",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon --watch src --exec node --loader ts-node/esm --trace-warnings --experimental-specifier-resolution=node src/server.ts",
-    "build": "rollup -c",
-    "start": "node dist/server.js",
+    "dev": "node init && nodemon --watch src --exec node --loader ts-node/esm --trace-warnings --experimental-specifier-resolution=node src/server.ts",
+    "build": "node init && rollup -c",
+    "start": "node init && node dist/server.js",
     "test": "jest --detectOpenHandles"
   },
   "keywords": [],
